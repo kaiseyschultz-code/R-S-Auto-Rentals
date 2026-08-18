@@ -1,0 +1,142 @@
+-- ============================================================
+-- R&S AUTO RENTALS — MIGRATION 002
+-- Helper functions, triggers, and views.
+-- Run after 001_schema.sql
+-- ============================================================
+
+-- ── UPDATED_AT TRIGGER ───────────────────────────────────────
+-- Automatically sets updated_at on every UPDATE.
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER set_tenants_updated_at           BEFORE UPDATE ON tenants           FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_users_updated_at             BEFORE UPDATE ON users             FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_vehicles_updated_at          BEFORE UPDATE ON vehicles          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_customers_updated_at         BEFORE UPDATE ON customers         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_rentals_updated_at           BEFORE UPDATE ON rentals           FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_invoices_updated_at          BEFORE UPDATE ON invoices          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_leads_updated_at             BEFORE UPDATE ON leads             FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_rental_agreements_updated_at BEFORE UPDATE ON rental_agreements FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_social_posts_updated_at      BEFORE UPDATE ON social_posts      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ── INVOICE AUTO-NUMBER ───────────────────────────────────────
+-- Generates INV-XXXX invoice numbers per tenant.
+CREATE OR REPLACE FUNCTION generate_invoice_number()
+RETURNS TRIGGER AS $$
+DECLARE
+  next_num int;
+BEGIN
+  SELECT COALESCE(MAX(CAST(SUBSTRING(invoice_number FROM 5) AS int)), 0) + 1
+    INTO next_num
+    FROM invoices
+   WHERE tenant_id = NEW.tenant_id
+     AND invoice_number IS NOT NULL;
+
+  NEW.invoice_number = 'INV-' || LPAD(next_num::text, 4, '0');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER auto_invoice_number
+  BEFORE INSERT ON invoices
+  FOR EACH ROW
+  WHEN (NEW.invoice_number IS NULL)
+  EXECUTE FUNCTION generate_invoice_number();
+
+-- ── GET CURRENT USER'S TENANT ────────────────────────────────
+-- Used by RLS policies. Returns tenant_id for the logged-in user.
+CREATE OR REPLACE FUNCTION public.tenant_id()
+RETURNS uuid AS $$
+  SELECT tenant_id FROM public.users WHERE id = auth.uid()
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- ── VEHICLE STATUS SYNC ───────────────────────────────────────
+-- When a rental goes active, mark vehicle as rented.
+-- When a rental is returned/cancelled, mark vehicle as available.
+CREATE OR REPLACE FUNCTION sync_vehicle_status()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'active' THEN
+    UPDATE vehicles SET status = 'rented' WHERE id = NEW.vehicle_id;
+  ELSIF NEW.status IN ('returned', 'cancelled') THEN
+    UPDATE vehicles SET status = 'available' WHERE id = NEW.vehicle_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER rental_status_vehicle_sync
+  AFTER INSERT OR UPDATE OF status ON rentals
+  FOR EACH ROW
+  EXECUTE FUNCTION sync_vehicle_status();
+
+-- ── ACTIVITY LOG HELPER ───────────────────────────────────────
+CREATE OR REPLACE FUNCTION log_activity(
+  p_tenant_id  uuid,
+  p_user_id    uuid,
+  p_entity_type text,
+  p_entity_id  uuid,
+  p_action     text,
+  p_details    jsonb DEFAULT '{}'
+)
+RETURNS void AS $$
+BEGIN
+  INSERT INTO activity_log (tenant_id, user_id, entity_type, entity_id, action, details)
+  VALUES (p_tenant_id, p_user_id, p_entity_type, p_entity_id, p_action, p_details);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ── DASHBOARD KPI VIEW ────────────────────────────────────────
+CREATE OR REPLACE VIEW dashboard_kpis AS
+SELECT
+  t.id                                                AS tenant_id,
+  -- Revenue (current month)
+  COALESCE(SUM(i.amount) FILTER (
+    WHERE i.status = 'paid'
+      AND DATE_TRUNC('month', i.paid_date) = DATE_TRUNC('month', now())
+  ), 0)                                               AS monthly_revenue,
+  -- Active rentals
+  COUNT(r.id) FILTER (WHERE r.status = 'active')      AS active_rentals,
+  -- Open leads
+  COUNT(l.id) FILTER (WHERE l.stage NOT IN ('won','lost')) AS open_leads,
+  -- Overdue invoices
+  COUNT(i2.id) FILTER (WHERE i2.status = 'overdue')   AS overdue_invoices,
+  -- Overdue invoice total
+  COALESCE(SUM(i2.amount) FILTER (WHERE i2.status = 'overdue'), 0) AS overdue_amount
+FROM tenants t
+LEFT JOIN invoices  i  ON i.tenant_id  = t.id
+LEFT JOIN rentals   r  ON r.tenant_id  = t.id
+LEFT JOIN leads     l  ON l.tenant_id  = t.id
+LEFT JOIN invoices  i2 ON i2.tenant_id = t.id
+GROUP BY t.id;
+
+-- ── VEHICLE ROI VIEW ─────────────────────────────────────────
+CREATE OR REPLACE VIEW vehicle_roi AS
+SELECT
+  v.id,
+  v.tenant_id,
+  v.name,
+  v.make,
+  v.model,
+  v.year,
+  v.status,
+  v.purchase_price,
+  v.mileage,
+  COALESCE(SUM(i.amount) FILTER (WHERE i.status = 'paid'), 0)           AS revenue,
+  COALESCE(SUM(e.amount) FILTER (WHERE e.category = 'maintenance'), 0)  AS maintenance_cost,
+  COALESCE(SUM(e.amount) FILTER (WHERE e.category = 'insurance'), 0)    AS insurance_cost,
+  COALESCE(SUM(e.amount) FILTER (WHERE e.category != 'purchase'), 0)    AS operating_cost,
+  COALESCE(SUM(e.amount), 0)                                            AS total_expenses,
+  COALESCE(SUM(i.amount) FILTER (WHERE i.status = 'paid'), 0)
+    - COALESCE(SUM(e.amount), 0)                                        AS net_position,
+  COUNT(DISTINCT r.id)                                                   AS total_rentals
+FROM vehicles v
+LEFT JOIN rentals  r ON r.vehicle_id = v.id
+LEFT JOIN invoices i ON i.rental_id  = r.id
+LEFT JOIN expenses e ON e.vehicle_id = v.id
+GROUP BY v.id, v.tenant_id, v.name, v.make, v.model, v.year, v.status, v.purchase_price, v.mileage;

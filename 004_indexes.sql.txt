@@ -1,0 +1,32 @@
+-- ============================================================
+-- R&S AUTO RENTALS — MIGRATION 004
+-- Performance indexes.
+-- Run after 003_rls.sql
+-- ============================================================
+
+-- tenant_id appears in every WHERE clause — index all of them
+CREATE INDEX idx_users_tenant_id             ON users             (tenant_id);
+CREATE INDEX idx_vehicles_tenant_id          ON vehicles          (tenant_id);
+CREATE INDEX idx_vehicles_status             ON vehicles          (tenant_id, status);
+CREATE INDEX idx_customers_tenant_id         ON customers         (tenant_id);
+CREATE INDEX idx_customers_search            ON customers         (tenant_id, last_name, first_name);
+CREATE INDEX idx_customers_email             ON customers         (tenant_id, email);
+CREATE INDEX idx_customers_phone             ON customers         (tenant_id, phone);
+CREATE INDEX idx_rentals_tenant_id           ON rentals           (tenant_id);
+CREATE INDEX idx_rentals_status              ON rentals           (tenant_id, status);
+CREATE INDEX idx_rentals_customer            ON rentals           (tenant_id, customer_id);
+CREATE INDEX idx_rentals_vehicle             ON rentals           (tenant_id, vehicle_id);
+CREATE INDEX idx_rentals_dates               ON rentals           (tenant_id, pickup_date, return_date);
+CREATE INDEX idx_invoices_tenant_id          ON invoices          (tenant_id);
+CREATE INDEX idx_invoices_status             ON invoices          (tenant_id, status);
+CREATE INDEX idx_invoices_customer           ON invoices          (tenant_id, customer_id);
+CREATE INDEX idx_invoices_rental             ON invoices          (rental_id);
+CREATE INDEX idx_expenses_tenant_id          ON expenses          (tenant_id);
+CREATE INDEX idx_expenses_vehicle            ON expenses          (vehicle_id);
+CREATE INDEX idx_leads_tenant_stage          ON leads             (tenant_id, stage);
+CREATE INDEX idx_agreements_tenant           ON rental_agreements (tenant_id);
+CREATE INDEX idx_agreements_rental           ON rental_agreements (rental_id);
+CREATE INDEX idx_agreements_status           ON rental_agreements (tenant_id, status);
+CREATE INDEX idx_activity_tenant_created     ON activity_log      (tenant_id, created_at DESC);
+CREATE INDEX idx_activity_entity             ON activity_log      (entity_type, entity_id);
+CREATE INDEX idx_social_posts_tenant_sched   ON social_posts      (tenant_id, scheduled_at);

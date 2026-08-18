@@ -1,0 +1,246 @@
+-- ============================================================
+-- R&S AUTO RENTALS — SCHEMA MIGRATION 001
+-- Core tables. Run this first in Supabase SQL Editor.
+-- ============================================================
+
+-- ── TENANTS ──────────────────────────────────────────────────
+-- One row per rental company. This is the root of multi-tenancy.
+CREATE TABLE tenants (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name             text NOT NULL,
+  slug             text UNIQUE NOT NULL,          -- used for subdomain: slug.platform.com
+  logo_url         text,
+  primary_color    text DEFAULT '#4db8e8',
+  email            text,
+  phone            text,
+  address          text,
+  city             text,
+  state            text,
+  zip              text,
+  plan             text NOT NULL DEFAULT 'free'
+                     CHECK (plan IN ('free','starter','pro','enterprise')),
+  stripe_customer_id      text,
+  stripe_subscription_id  text,
+  is_active        boolean NOT NULL DEFAULT true,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── USERS ────────────────────────────────────────────────────
+-- Extends Supabase auth.users. One row per staff member.
+CREATE TABLE users (
+  id          uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  tenant_id   uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  email       text NOT NULL,
+  full_name   text,
+  role        text NOT NULL DEFAULT 'staff'
+                CHECK (role IN ('owner','manager','staff')),
+  avatar_url  text,
+  is_active   boolean NOT NULL DEFAULT true,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── VEHICLES ─────────────────────────────────────────────────
+CREATE TABLE vehicles (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name            text NOT NULL,                  -- display name e.g. "Toyota Camry"
+  make            text,
+  model           text,
+  year            int,
+  vin             text,
+  plate           text,
+  color           text,
+  purchase_price  numeric(10,2),
+  purchase_date   date,
+  mileage         int NOT NULL DEFAULT 0,
+  platforms       text[],                         -- ['Uber','Lyft','DoorDash']
+  status          text NOT NULL DEFAULT 'available'
+                    CHECK (status IN ('available','rented','service','inactive')),
+  photo_url       text,
+  notes           text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── CUSTOMERS ────────────────────────────────────────────────
+CREATE TABLE customers (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  -- Personal
+  first_name       text NOT NULL,
+  last_name        text NOT NULL,
+  email            text,
+  phone            text,
+  dob              date,
+  address          text,
+  city             text,
+  state            text,
+  zip              text,
+  -- ID verification
+  id_type          text CHECK (id_type IN ('license','passport','state_id')),
+  id_number        text,
+  id_expiry        date,
+  id_verified      boolean NOT NULL DEFAULT false,
+  id_verified_at   timestamptz,
+  -- Insurance
+  insurance_carrier      text,
+  insurance_policy       text,
+  insurance_expiry       date,
+  insurance_coverage     text,
+  insurance_claims_phone text,
+  -- Emergency contact
+  emergency_name         text,
+  emergency_phone        text,
+  emergency_relation     text,
+  -- Internal flags
+  is_gig_worker    boolean NOT NULL DEFAULT false,
+  gig_platforms    text[],
+  is_flagged       boolean NOT NULL DEFAULT false,
+  flag_reason      text,
+  notes            text,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── RENTALS ──────────────────────────────────────────────────
+CREATE TABLE rentals (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  customer_id         uuid NOT NULL REFERENCES customers(id),
+  vehicle_id          uuid NOT NULL REFERENCES vehicles(id),
+  status              text NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending','active','returned','overdue','cancelled')),
+  plan_type           text NOT NULL DEFAULT 'weekly'
+                        CHECK (plan_type IN ('daily','weekly')),
+  rate_amount         numeric(10,2) NOT NULL,
+  pickup_date         date NOT NULL,
+  return_date         date NOT NULL,
+  actual_return_date  date,
+  odometer_out        int,
+  odometer_in         int,
+  platform            text,                       -- 'Uber', 'DoorDash', 'Personal', etc.
+  booking_source      text DEFAULT 'manual'
+                        CHECK (booking_source IN ('manual','shopify','web','phone')),
+  notes               text,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── INVOICES ─────────────────────────────────────────────────
+CREATE TABLE invoices (
+  id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  rental_id                uuid REFERENCES rentals(id),
+  customer_id              uuid NOT NULL REFERENCES customers(id),
+  invoice_number           text UNIQUE,            -- auto-generated e.g. INV-0014
+  amount                   numeric(10,2) NOT NULL,
+  status                   text NOT NULL DEFAULT 'pending'
+                             CHECK (status IN ('draft','pending','paid','overdue','cancelled')),
+  issued_date              date NOT NULL DEFAULT CURRENT_DATE,
+  due_date                 date,
+  paid_date                date,
+  stripe_payment_intent_id text,
+  stripe_payment_link      text,
+  pdf_url                  text,
+  notes                    text,
+  created_at               timestamptz NOT NULL DEFAULT now(),
+  updated_at               timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── EXPENSES ─────────────────────────────────────────────────
+CREATE TABLE expenses (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  vehicle_id   uuid REFERENCES vehicles(id),
+  category     text NOT NULL
+                 CHECK (category IN ('purchase','maintenance','insurance','cleaning','fuel','platform','other')),
+  description  text,
+  amount       numeric(10,2) NOT NULL,
+  expense_date date NOT NULL DEFAULT CURRENT_DATE,
+  receipt_url  text,                               -- Supabase Storage URL
+  created_by   uuid REFERENCES users(id),
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── LEADS ────────────────────────────────────────────────────
+CREATE TABLE leads (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name           text NOT NULL,
+  email          text,
+  phone          text,
+  source         text,                             -- 'website','phone','referral','social'
+  platform       text,                             -- 'Uber','DoorDash', etc.
+  stage          text NOT NULL DEFAULT 'new'
+                   CHECK (stage IN ('new','contacted','docs','agreement','won','lost')),
+  desired_plan   text,
+  desired_vehicle text,
+  converted_to_rental_id uuid REFERENCES rentals(id),
+  notes          text,
+  assigned_to    uuid REFERENCES users(id),
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── RENTAL AGREEMENTS ────────────────────────────────────────
+CREATE TABLE rental_agreements (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  rental_id           uuid NOT NULL REFERENCES rentals(id) ON DELETE CASCADE,
+  customer_id         uuid NOT NULL REFERENCES customers(id),
+  template_type       text NOT NULL DEFAULT 'standard_weekly',
+  status              text NOT NULL DEFAULT 'draft'
+                        CHECK (status IN ('draft','sent','signed','expired','cancelled')),
+  sent_at             timestamptz,
+  signed_at           timestamptz,
+  esign_request_id    text,                        -- Dropbox Sign request ID
+  esign_signature_id  text,
+  document_url        text,                        -- final signed PDF (Supabase Storage)
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── FOLLOW-UP SEQUENCES ──────────────────────────────────────
+CREATE TABLE follow_up_sequences (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name           text NOT NULL,
+  trigger_event  text NOT NULL,
+    -- 'no_reply_24h' | 'docs_pending_48h' | 'esign_pending_24h'
+    -- 'post_return_1d' | 'overdue_invoice' | 'renewal_reminder'
+  steps          jsonb NOT NULL DEFAULT '[]',
+    -- [{delay_hours: 24, channel: "sms", template: "Hi {name}, ..."}]
+  is_active      boolean NOT NULL DEFAULT true,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── ACTIVITY LOG ─────────────────────────────────────────────
+CREATE TABLE activity_log (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id      uuid REFERENCES users(id),
+  entity_type  text,                               -- 'rental','customer','vehicle','invoice'
+  entity_id    uuid,
+  action       text NOT NULL,                      -- 'created','updated','status_changed', etc.
+  details      jsonb,                              -- {from: 'active', to: 'returned'}
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+-- ── SOCIAL POSTS ─────────────────────────────────────────────
+CREATE TABLE social_posts (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  platform      text NOT NULL CHECK (platform IN ('instagram','facebook','twitter')),
+  caption       text,
+  media_url     text,
+  scheduled_at  timestamptz,
+  published_at  timestamptz,
+  status        text NOT NULL DEFAULT 'draft'
+                  CHECK (status IN ('draft','scheduled','published','failed')),
+  created_by    uuid REFERENCES users(id),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);

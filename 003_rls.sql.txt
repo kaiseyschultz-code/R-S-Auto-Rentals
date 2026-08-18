@@ -1,0 +1,117 @@
+-- ============================================================
+-- R&S AUTO RENTALS — MIGRATION 003
+-- Row Level Security policies.
+-- Run after 002_functions.sql
+-- ============================================================
+-- How it works: every table has a tenant_id column.
+-- public.tenant_id() looks up the logged-in user's tenant_id.
+-- No query can ever return rows from another tenant.
+-- ============================================================
+
+-- ── ENABLE RLS ON ALL TABLES ─────────────────────────────────
+ALTER TABLE tenants             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vehicles            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customers           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rentals             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leads               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rental_agreements   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE follow_up_sequences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_log        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE social_posts        ENABLE ROW LEVEL SECURITY;
+
+-- ── TENANTS ──────────────────────────────────────────────────
+-- Users can only read their own tenant row.
+-- Only service_role (server-side only) can insert/update tenants.
+CREATE POLICY "users_read_own_tenant" ON tenants
+  FOR SELECT USING (id = public.tenant_id());
+
+-- ── USERS ────────────────────────────────────────────────────
+CREATE POLICY "users_in_same_tenant" ON users
+  FOR ALL USING (tenant_id = public.tenant_id());
+
+-- Owner can manage all users in tenant; staff read-only.
+CREATE POLICY "owner_manages_users" ON users
+  FOR INSERT WITH CHECK (
+    tenant_id = public.tenant_id()
+    AND EXISTS (
+      SELECT 1 FROM users WHERE id = auth.uid() AND role = 'owner'
+    )
+  );
+
+-- ── VEHICLES ─────────────────────────────────────────────────
+CREATE POLICY "tenant_vehicles" ON vehicles
+  FOR ALL USING (tenant_id = public.tenant_id())
+  WITH CHECK (tenant_id = public.tenant_id());
+
+-- ── CUSTOMERS ────────────────────────────────────────────────
+CREATE POLICY "tenant_customers" ON customers
+  FOR ALL USING (tenant_id = public.tenant_id())
+  WITH CHECK (tenant_id = public.tenant_id());
+
+-- ── RENTALS ──────────────────────────────────────────────────
+CREATE POLICY "tenant_rentals" ON rentals
+  FOR ALL USING (tenant_id = public.tenant_id())
+  WITH CHECK (tenant_id = public.tenant_id());
+
+-- ── INVOICES ─────────────────────────────────────────────────
+CREATE POLICY "tenant_invoices" ON invoices
+  FOR ALL USING (tenant_id = public.tenant_id())
+  WITH CHECK (tenant_id = public.tenant_id());
+
+-- ── EXPENSES ─────────────────────────────────────────────────
+CREATE POLICY "tenant_expenses" ON expenses
+  FOR ALL USING (tenant_id = public.tenant_id())
+  WITH CHECK (tenant_id = public.tenant_id());
+
+-- ── LEADS ────────────────────────────────────────────────────
+CREATE POLICY "tenant_leads" ON leads
+  FOR ALL USING (tenant_id = public.tenant_id())
+  WITH CHECK (tenant_id = public.tenant_id());
+
+-- ── RENTAL AGREEMENTS ────────────────────────────────────────
+CREATE POLICY "tenant_agreements" ON rental_agreements
+  FOR ALL USING (tenant_id = public.tenant_id())
+  WITH CHECK (tenant_id = public.tenant_id());
+
+-- ── FOLLOW-UP SEQUENCES ──────────────────────────────────────
+CREATE POLICY "tenant_sequences" ON follow_up_sequences
+  FOR ALL USING (tenant_id = public.tenant_id())
+  WITH CHECK (tenant_id = public.tenant_id());
+
+-- ── ACTIVITY LOG ─────────────────────────────────────────────
+CREATE POLICY "tenant_activity" ON activity_log
+  FOR SELECT USING (tenant_id = public.tenant_id());
+
+-- Only the server (service_role) inserts activity log entries.
+CREATE POLICY "server_inserts_activity" ON activity_log
+  FOR INSERT WITH CHECK (tenant_id = public.tenant_id());
+
+-- ── SOCIAL POSTS ─────────────────────────────────────────────
+CREATE POLICY "tenant_social_posts" ON social_posts
+  FOR ALL USING (tenant_id = public.tenant_id())
+  WITH CHECK (tenant_id = public.tenant_id());
+
+-- ── ROLE-BASED ACCESS: FINANCE ───────────────────────────────
+-- Staff cannot read invoices or expenses (finance is manager/owner only).
+CREATE POLICY "finance_manager_owner_only" ON invoices
+  FOR SELECT USING (
+    tenant_id = public.tenant_id()
+    AND EXISTS (
+      SELECT 1 FROM users
+       WHERE id = auth.uid()
+         AND role IN ('owner','manager')
+    )
+  );
+
+CREATE POLICY "expenses_manager_owner_only" ON expenses
+  FOR SELECT USING (
+    tenant_id = public.tenant_id()
+    AND EXISTS (
+      SELECT 1 FROM users
+       WHERE id = auth.uid()
+         AND role IN ('owner','manager')
+    )
+  );

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">
+  <rect width="400" height="300" fill="#e6f3fa"/>
+  <rect x="60" y="150" width="280" height="70" rx="16" fill="#4db8e8"/>
+  <rect x="100" y="110" width="200" height="60" rx="20" fill="#1d4ed8"/>
+  <circle cx="120" cy="220" r="24" fill="#0b1220"/>
+  <circle cx="280" cy="220" r="24" fill="#0b1220"/>
+  <text x="200" y="270" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#0b1220" opacity="0.5">Vehicle photo coming soon</text>
+</svg>

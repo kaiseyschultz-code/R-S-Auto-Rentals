@@ -1,0 +1,157 @@
+-- ============================================================
+-- R&S AUTO RENTALS — MIGRATION 005
+-- Seed data for R&S Auto Rentals (your own business).
+-- Run after 004_indexes.sql
+-- ============================================================
+-- NOTE: After creating your first user via Supabase Auth
+-- (Authentication → Users → Invite user), copy that user's UUID
+-- and replace 'YOUR_USER_UUID_HERE' below before running.
+-- ============================================================
+
+-- ── R&S TENANT ───────────────────────────────────────────────
+INSERT INTO tenants (id, name, slug, email, phone, city, state, zip, plan)
+VALUES (
+  'a1b2c3d4-0000-0000-0000-000000000001',
+  'R&S Auto Rentals',
+  'rs-auto-rentals',
+  'admin@rsautorentals.com',
+  '(772) 555-0100',
+  'Port Saint Lucie',
+  'FL',
+  '34953',
+  'pro'
+);
+
+-- ── OWNER USER ───────────────────────────────────────────────
+-- Replace YOUR_USER_UUID_HERE with your actual Supabase Auth user ID.
+-- INSERT INTO users (id, tenant_id, email, full_name, role)
+-- VALUES (
+--   'YOUR_USER_UUID_HERE',
+--   'a1b2c3d4-0000-0000-0000-000000000001',
+--   'admin@rsautorentals.com',
+--   'R&S Admin',
+--   'owner'
+-- );
+
+-- ── VEHICLES ─────────────────────────────────────────────────
+INSERT INTO vehicles (id, tenant_id, name, make, model, year, vin, plate, purchase_price, mileage, platforms, status)
+VALUES
+  (
+    'v1000000-0000-0000-0000-000000000001',
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'Toyota Camry',
+    'Toyota', 'Camry', 2022,
+    '4T1BF1FK...891',
+    'FL · ABC-1234',
+    18500.00,
+    41200,
+    ARRAY['Uber','Lyft'],
+    'rented'
+  ),
+  (
+    'v1000000-0000-0000-0000-000000000002',
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'Ford Fusion',
+    'Ford', 'Fusion', 2021,
+    '3FA6P0H7...447',
+    'FL · XYZ-5678',
+    14200.00,
+    38800,
+    ARRAY['DoorDash','Lyft'],
+    'rented'
+  );
+
+-- ── SAMPLE CUSTOMERS ─────────────────────────────────────────
+INSERT INTO customers (id, tenant_id, first_name, last_name, email, phone, is_gig_worker, gig_platforms)
+VALUES
+  (
+    'c1000000-0000-0000-0000-000000000001',
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'Marcus', 'T.',
+    'marcus.t@email.com', '(772) 555-0101',
+    true, ARRAY['Uber']
+  ),
+  (
+    'c1000000-0000-0000-0000-000000000002',
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'Janelle', 'R.',
+    'janelle.r@email.com', '(772) 555-0102',
+    true, ARRAY['DoorDash']
+  ),
+  (
+    'c1000000-0000-0000-0000-000000000003',
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'Priya', 'S.',
+    'priya.s@email.com', '(561) 555-0103',
+    false, NULL
+  );
+
+-- ── SAMPLE RENTALS ───────────────────────────────────────────
+INSERT INTO rentals (tenant_id, customer_id, vehicle_id, status, plan_type, rate_amount, pickup_date, return_date, platform)
+VALUES
+  (
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'c1000000-0000-0000-0000-000000000001',
+    'v1000000-0000-0000-0000-000000000001',
+    'active', 'weekly', 199.00,
+    '2025-05-08', '2025-05-22',
+    'Uber'
+  ),
+  (
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'c1000000-0000-0000-0000-000000000002',
+    'v1000000-0000-0000-0000-000000000002',
+    'active', 'weekly', 179.00,
+    '2025-05-05', '2025-05-19',
+    'DoorDash'
+  );
+
+-- ── SAMPLE EXPENSES ──────────────────────────────────────────
+INSERT INTO expenses (tenant_id, vehicle_id, category, description, amount, expense_date)
+VALUES
+  ('a1b2c3d4-0000-0000-0000-000000000001', 'v1000000-0000-0000-0000-000000000001', 'purchase',     'Vehicle purchase',     18500.00, '2024-11-01'),
+  ('a1b2c3d4-0000-0000-0000-000000000001', 'v1000000-0000-0000-0000-000000000001', 'insurance',    'Monthly insurance',    240.00,   '2025-05-01'),
+  ('a1b2c3d4-0000-0000-0000-000000000001', 'v1000000-0000-0000-0000-000000000001', 'maintenance',  'Oil change + tires',   320.00,   '2025-03-15'),
+  ('a1b2c3d4-0000-0000-0000-000000000001', 'v1000000-0000-0000-0000-000000000002', 'purchase',     'Vehicle purchase',     14200.00, '2024-12-01'),
+  ('a1b2c3d4-0000-0000-0000-000000000001', 'v1000000-0000-0000-0000-000000000002', 'insurance',    'Monthly insurance',    210.00,   '2025-05-01'),
+  ('a1b2c3d4-0000-0000-0000-000000000001', 'v1000000-0000-0000-0000-000000000002', 'maintenance',  'Brake pads',           180.00,   '2025-04-10');
+
+-- ── DEFAULT FOLLOW-UP SEQUENCES ──────────────────────────────
+INSERT INTO follow_up_sequences (tenant_id, name, trigger_event, steps)
+VALUES
+  (
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'Abandoned Inquiry',
+    'no_reply_24h',
+    '[
+      {"delay_hours": 24, "channel": "sms",   "template": "Hi {name}, still interested in renting with R&S? We have vehicles available this week. Reply or call (772) 555-0100."},
+      {"delay_hours": 72, "channel": "sms",   "template": "Last chance — {name}, our {vehicle_type} is available starting {date}. Book now: {booking_link}"},
+      {"delay_hours": 168,"channel": "email", "template": "Follow-up: Your R&S rental inquiry"}
+    ]'
+  ),
+  (
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'Docs Reminder',
+    'docs_pending_48h',
+    '[
+      {"delay_hours": 48, "channel": "sms",   "template": "Hi {name}, we still need your license photo to confirm your booking. Upload here: {upload_link}"},
+      {"delay_hours": 96, "channel": "sms",   "template": "{name}, your booking will be released in 24hrs if we don''t receive your docs. Upload: {upload_link}"}
+    ]'
+  ),
+  (
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'eSign Nudge',
+    'esign_pending_24h',
+    '[
+      {"delay_hours": 24, "channel": "sms",   "template": "Hi {name}, please sign your R&S rental agreement to confirm your booking: {esign_link}"},
+      {"delay_hours": 48, "channel": "email", "template": "Action required: Sign your rental agreement"}
+    ]'
+  ),
+  (
+    'a1b2c3d4-0000-0000-0000-000000000001',
+    'Post-Return Check-In',
+    'post_return_1d',
+    '[
+      {"delay_hours": 24, "channel": "sms", "template": "Hi {name}, thanks for renting with R&S! How was your experience? Reply to let us know — and book again anytime at {booking_link}"}
+    ]'
+  );
