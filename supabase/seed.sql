@@ -6,18 +6,19 @@
 -- ============================================================
 
 -- ── R&S TENANT ───────────────────────────────────────────────
-INSERT INTO public.tenants (id, name, slug, email, phone, city, state, zip, plan)
+-- Migration 7 already creates this row; the seed only fills in the
+-- remaining sample fields if it somehow doesn't exist.
+INSERT INTO public.tenants (id, name, slug, phone, city, state, plan)
 VALUES (
   'a1b2c3d4-0000-0000-0000-000000000001',
   'R&S Auto Rentals',
   'rs-auto-rentals',
-  'admin@rsautorentals.com',
   '(772) 202-0853',
-  'Port Saint Lucie',
+  'Stuart',
   'FL',
-  '34953',
   'pro'
-);
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- ── OWNER USER ───────────────────────────────────────────────
 -- Create your login first (Supabase Dashboard → Authentication →
