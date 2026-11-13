@@ -10,10 +10,13 @@ export default function Sidebar({
   items,
   user,
   signOut,
+  websiteUrl = "/",
 }: {
   items: NavItem[];
   user: { name: string; role: string };
   signOut: () => Promise<void>;
+  /** Public website link: "/" normally, the live site when deployed ops-only. */
+  websiteUrl?: string;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -62,9 +65,9 @@ export default function Sidebar({
           <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
           <p className="text-xs capitalize text-ink/50">{user.role}</p>
           <div className="mt-3 flex gap-3 text-xs font-semibold">
-            <Link href="/" className="text-ink/50 hover:text-ink">
+            <a href={websiteUrl} className="text-ink/50 hover:text-ink">
               View website
-            </Link>
+            </a>
             <form action={signOut}>
               <button type="submit" className="text-ink/50 hover:text-ink">
                 Sign out

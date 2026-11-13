@@ -12,9 +12,12 @@ renters. This repo has:
    **Runs locally in Docker; not yet applied to a live Supabase project.**
 
 **The live site, www.rsautorentals.com, is NOT built from this repo.** It's a separate
-site whose "Book now" is an inquiry form (`/book-car`). Open decision for MD: does `web/`
-replace it, or does it stay as the public face (then deploy only the CRM + inspection
-parts, e.g. at ops.rsautorentals.com, and send its booking inquiries into CRM leads)?
+site whose "Book now" is an inquiry form (`/book-car`). **Decided 2026-11-13: the live site
+stays as the public face.** This app deploys beside it, e.g. at ops.rsautorentals.com, with
+`OPS_ONLY=true`: `src/proxy.ts` then serves only `/admin` and `/inspect` (plus
+`/api/inspect`), sends `/` to the CRM, and 308-redirects every other path to
+`MAIN_SITE_URL`. The public pages in `web/(site)` stay in the repo but aren't served there.
+Next integration: the live site's booking inquiries → CRM leads.
 
 **Payments are Square only.** No Stripe, no Shopify anywhere: not in the site, not in the
 CRM schema. Don't add fields or integrations for either.
@@ -270,10 +273,10 @@ referenced in copy/schema:
 
 ## 6. Suggested next steps, roughly in order
 
-1. MD decides whether `web/` replaces www.rsautorentals.com, or only `/admin` +
-   `/inspect` get deployed alongside it (see the top of this file).
-2. Stand up a live Supabase project, run the migrations (§3), create the owner login,
-   and deploy (Vercel/Netlify) with the env vars from `web/.env.example`.
+1. Stand up a live Supabase project, run the migrations (§3), and create the owner login.
+2. Deploy `web/` ops-only (Vercel, `OPS_ONLY=true`, env vars from `web/.env.example`) at
+   a subdomain such as ops.rsautorentals.com; set `NEXT_PUBLIC_SITE_URL` to it so
+   inspection links point there, and add it to Supabase Auth's site/redirect URLs.
 3. Send live-site booking inquiries into CRM `leads`.
 4. Send inspection links by SMS/email; then inspection Stage 2 (§4).
 5. Set up Square sandbox with real vehicles; decide the Square ↔ CRM question (§3), then
