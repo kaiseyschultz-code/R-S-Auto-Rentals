@@ -4,3 +4,6 @@
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Machine-specific dev-server preview config (points at a local build copy)
+.claude/launch.json

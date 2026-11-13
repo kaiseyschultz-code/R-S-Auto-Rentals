@@ -1,8 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
-import ChatWidget from "@/components/chat/ChatWidget";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -21,18 +18,14 @@ export const metadata: Metadata = {
     "Daily and weekly car rentals built for Uber, DoorDash, and Lyft drivers, plus anyone who needs flexible wheels — no long-term commitment.",
 };
 
+// Bare shell shared by the public site, (site)/layout.tsx, and the staff CRM, admin/.
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground">
-        <Navbar />
-        <main className="flex-1">{children}</main>
-        <Footer />
-        <ChatWidget />
-      </body>
+      <body className="min-h-full flex flex-col bg-background text-foreground">{children}</body>
     </html>
   );
 }

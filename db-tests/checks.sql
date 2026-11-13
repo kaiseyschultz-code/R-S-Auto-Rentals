@@ -57,3 +57,29 @@ RESET ROLE;
 -- return car → vehicle available
 UPDATE rentals SET status='returned' WHERE id='d1000000-0000-0000-0000-000000000001';
 SELECT 'camry after return (expect available)' t, status FROM vehicles WHERE id='b1000000-0000-0000-0000-000000000001';
+
+-- ===== staff profile when app_metadata arrives in a later UPDATE (how Supabase Auth does it) =====
+INSERT INTO auth.users (id,email,raw_app_meta_data) VALUES ('00000000-0000-0000-0000-00000000000e','late@x','{"provider":"email"}');
+UPDATE auth.users SET raw_app_meta_data = raw_app_meta_data || '{"tenant_id":"a1b2c3d4-0000-0000-0000-000000000001","role":"staff"}' WHERE id='00000000-0000-0000-0000-00000000000e';
+SELECT 'profile created on metadata update (expect staff)' t, role FROM users WHERE id='00000000-0000-0000-0000-00000000000e';
+
+-- ===== inspections: tenant isolation + private bucket =====
+INSERT INTO inspections (id, tenant_id, rental_id, kind, token) VALUES
+ ('e1000000-0000-0000-0000-000000000001','a1b2c3d4-0000-0000-0000-000000000001','d1000000-0000-0000-0000-000000000002','pickup','tok-test-1');
+INSERT INTO inspection_photos (tenant_id, inspection_id, angle, storage_path, sha256) VALUES
+ ('a1b2c3d4-0000-0000-0000-000000000001','e1000000-0000-0000-0000-000000000001','front','a1b2c3d4-0000-0000-0000-000000000001/e1000000-0000-0000-0000-000000000001/front.jpg','abc');
+INSERT INTO inspection_photos (tenant_id, inspection_id, angle, storage_path, sha256) VALUES
+ ('a1b2c3d4-0000-0000-0000-000000000001','e1000000-0000-0000-0000-000000000001','roof','x','y');  -- expect check error (not in shot list)
+INSERT INTO storage.objects (bucket_id, name) VALUES ('inspections','a1b2c3d4-0000-0000-0000-000000000001/e1000000-0000-0000-0000-000000000001/front.jpg');
+SELECT 'bucket is private (expect f)' t, public FROM storage.buckets WHERE id='inspections';
+SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000000b',false);
+SELECT 'staff sees own inspections/photos/objects (expect 1,1,1)' t,
+  (SELECT count(*) FROM inspections),(SELECT count(*) FROM inspection_photos),(SELECT count(*) FROM storage.objects);
+RESET ROLE;
+SET ROLE authenticated; SELECT set_config('request.jwt.claim.sub','00000000-0000-0000-0000-00000000000c',false);
+SELECT 'other tenant sees inspections/photos/objects (expect 0,0,0)' t,
+  (SELECT count(*) FROM inspections),(SELECT count(*) FROM inspection_photos),(SELECT count(*) FROM storage.objects);
+RESET ROLE;
+SET ROLE anon; SELECT set_config('request.jwt.claim.sub','',false);
+SELECT 'anon sees inspections (expect permission error or 0)' t, count(*) FROM inspections;
+RESET ROLE;

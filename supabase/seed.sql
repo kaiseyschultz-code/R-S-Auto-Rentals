@@ -12,7 +12,7 @@ VALUES (
   'R&S Auto Rentals',
   'rs-auto-rentals',
   'admin@rsautorentals.com',
-  '(772) 555-0100',
+  '(772) 202-0853',
   'Port Saint Lucie',
   'FL',
   '34953',
@@ -93,7 +93,7 @@ VALUES
 INSERT INTO public.follow_up_sequences (tenant_id, name, trigger_event, steps)
 VALUES
   ('a1b2c3d4-0000-0000-0000-000000000001', 'Abandoned Inquiry', 'no_reply_24h', '[
-    {"delay_hours": 24,  "channel": "sms",   "template": "Hi {name}, still interested in renting with R&S? We have vehicles available this week. Reply or call (772) 555-0100."},
+    {"delay_hours": 24,  "channel": "sms",   "template": "Hi {name}, still interested in renting with R&S? We have vehicles available this week. Reply or call (772) 202-0853."},
     {"delay_hours": 72,  "channel": "sms",   "template": "Last chance — {name}, our {vehicle_type} is available starting {date}. Book now: {booking_link}"},
     {"delay_hours": 168, "channel": "email", "template": "Follow-up: Your R&S rental inquiry"}
   ]'),
