@@ -4,8 +4,12 @@ Private car rental company (Port Saint Lucie, FL). Daily/weekly rentals aimed at
 drivers (Uber, DoorDash, Lyft) and local renters. This repo has two independent halves:
 
 1. **`web/`** — the customer-facing website. Next.js + Square. **Built and working.**
-2. **Repo root SQL files** — an internal CRM/ops backend schema (Supabase/Postgres).
-   **Designed but not yet applied to a live database, and not yet connected to `web/`.**
+2. **`supabase/`** — the internal CRM/ops backend schema (Supabase/Postgres).
+   **Migrations written and tested on local Postgres; not yet applied to a live Supabase
+   project, and not yet connected to `web/`. No staff CRM UI exists yet.**
+
+**Payments are Square only.** No Stripe, no Shopify anywhere: not in the site, not in the
+CRM schema. Don't add fields or integrations for either.
 
 Read this whole file before making changes — it covers what exists, what's stubbed,
 what's not started, and the decisions already made so you don't re-litigate them.
@@ -97,42 +101,51 @@ node node_modules/eslint/bin/eslint.js .
 
 ---
 
-## 2. The CRM/ops backend (SQL files at repo root)
+## 2. The CRM/ops backend (`supabase/`)
 
-**Not yet applied to any database, and not yet connected to `web/`.** This is a
-multi-tenant Supabase/Postgres schema for the business's internal operations — rentals,
-customers, invoices, expenses, leads, rental agreements, follow-up sequences — separate
-from the public website above.
+**Not yet applied to a live Supabase project, and not yet connected to `web/`.** A
+multi-tenant Supabase/Postgres schema for the business's internal operations (rentals,
+customers, invoices, expenses, leads, rental agreements, follow-up sequences), separate
+from the public website above. R&S is the only tenant; `tenant_id` stays on every table
+so the CRM could be offered to other rental companies later.
 
-### Files, in the order they must be run in the Supabase SQL Editor
+### Files (Supabase CLI layout; run in this order)
 
-1. `schema1-sql.txt` — core tables (tenants, users, vehicles, customers, rentals,
-   invoices, expenses, leads, rental_agreements, follow_up_sequences, activity_log,
-   social_posts)
-2. `002_functions-sql.txt` — triggers, invoice auto-numbering, the `public.tenant_id()`
-   helper RLS depends on, vehicle status sync, dashboard KPI + vehicle ROI views
-3. `003_rls.sql.txt` — row-level security (tenant-isolated; invoices/expenses restricted
-   to owner/manager roles)
-4. `004_indexes.sql.txt` — performance indexes
-5. `005_Seed-sql.txt` — seeds one tenant ("R&S Auto Rentals") with sample data. Has a
-   commented-out owner-user insert — create your first user via Supabase Auth first,
-   copy their UUID in, then uncomment and run.
+1. `supabase/migrations/20261113000001_schema.sql`: core tables, plus Square ID columns
+   (`vehicles.square_item_id` / `square_daily_variation_id` / `square_weekly_variation_id`,
+   `customers.square_customer_id`, `rentals.square_order_id`, `invoices.square_*`) and a
+   `rentals_no_double_booking` exclusion constraint (needs `btree_gist`).
+2. `..._functions.sql`: `updated_at` triggers; per-tenant invoice numbering via an
+   `invoice_counters` table; RLS helpers `public.tenant_id()`, `public.user_role()`,
+   `public.is_finance_user()`; a guard trigger so only owners change role/tenant/active;
+   `handle_new_auth_user` (creates a staff profile from the auth user's **app_metadata**
+   `tenant_id`/`role`/`full_name`; never user_metadata, which public sign-ups control);
+   vehicle status sync; `dashboard_kpis` and `vehicle_roi` views (`security_invoker`).
+3. `..._rls.sql`: tenant isolation. Invoices and expenses are owner/manager only.
+   Postgres ORs permissive policies, so never add a broad policy on a table that has a
+   stricter one.
+4. `..._indexes.sql`.
+5. `supabase/seed.sql`: sample data for R&S (dates relative to today). The owner-user
+   insert is commented out: create your login in Supabase Auth first, then run it with
+   your UUID.
 
-**Delete before running**: `001_functions-sql.txt` and `schema2-sql.txt` are stale
-duplicate drafts (they define `auth.tenant_id()`, which Supabase blocks — Supabase
-doesn't allow user-created functions in the `auth` schema). `002_functions-sql.txt` is
-the corrected version that `003_rls.sql.txt` actually depends on. Don't run the stale
-files or RLS will fail to find the function it expects.
+Without the Supabase CLI, paste each file into the Supabase SQL Editor in that order.
+The original drafts are in `archive/sql-drafts/` for reference only; don't run them.
 
-### Open question before building further
+### Testing the schema
 
-The `tenants` table has `plan` and Stripe subscription fields, suggesting this schema
-was designed as a resellable multi-tenant SaaS product — but the seed data only
-populates R&S's own tenant, and nothing in `web/` talks to this schema yet. Before
-building either direction, confirm with the project owner:
-- Is the CRM internal-only for R&S, or a product to sell to other rental companies?
-- Should a completed Square checkout create a row in `rentals`/`customers` (e.g. via a
-  Square webhook → API route → Supabase insert), or do the two systems stay separate?
+`bash db-tests/run.sh` (needs Docker) applies the migrations and seed to a throwaway
+Postgres 17 container, with `db-tests/supabase-shim.sql` standing in for Supabase's
+auth schema and roles, then runs `db-tests/checks.sql`: RLS per role and tenant,
+double-booking, invoice numbering, KPI/ROI totals. Each check's label says what to expect;
+three ERROR lines (double booking, staff self-promotion, staff invoice insert) are
+expected. Re-run after any schema change.
+
+### Open question
+
+Should a completed Square checkout create rows in `customers`/`rentals`/`invoices`
+(Square webhook → API route → Supabase insert with the service_role key)? Leaning yes;
+confirm with the project owner before building it.
 
 ---
 
@@ -148,19 +161,22 @@ referenced in copy/schema:
 | ID verification (iDenfy) | Not started — mentioned in booking copy only | `web/src/components/booking/BookingWizard.tsx` |
 | BTA appointment booking | Not started | — |
 | Rental agreement e-signature | Placeholder typed-signature UI only | `BookingWizard.tsx` step 3; real backend is `rental_agreements` table (Dropbox Sign fields already in schema) |
-| CRM database | Schema written, not applied, not connected to the website | repo root `*.sql.txt` files |
+| CRM database | Migrations tested locally; not applied to Supabase, not connected to the website | `supabase/` |
+| Staff CRM UI | Not started | — |
 
 ## 4. Suggested next steps, roughly in order
 
 1. Set up a Square sandbox account, add a few real vehicles, confirm the live catalog
    path works end-to-end (not just the mock fallback).
 2. Stand up a Supabase project and run the CRM migrations (§2).
-3. Decide the Square ↔ CRM integration question (§2) before building a connector.
-4. Wire `api/chat` to a real LLM (Claude or OpenAI) and `api/contact` to email or the
+3. Build the staff CRM UI (planned: an `/admin` area inside `web/` with Supabase Auth):
+   dashboard, vehicles, customers, rentals, invoices, expenses, leads pipeline.
+4. Decide the Square ↔ CRM integration question (§2), then build the Square webhook.
+5. Wire `api/chat` to a real LLM (Claude or OpenAI) and `api/contact` to email or the
    `leads` table.
-5. Integrate iDenfy (ID verification) and a real e-signature provider for the rental
+6. Integrate iDenfy (ID verification) and a real e-signature provider for the rental
    agreement step.
-6. Deploy `web/` to Vercel or Netlify; set the production env vars from `.env.example`.
+7. Deploy `web/` to Vercel or Netlify; set the production env vars from `.env.example`.
 
 ## 5. Tech stack reference
 
@@ -170,4 +186,20 @@ referenced in copy/schema:
   `tailwind.config.js`).
 - `square` npm package (the new Fern-generated SDK — `SquareClient`, not the legacy
   `square/legacy` client).
-- No test suite yet.
+- No app test suite yet. The CRM schema has `db-tests/` (see §2).
+
+## 6. Git identities
+
+This repo sets its own identity in `.git/config`, so the global `DeployWise` identity in
+`~/.gitconfig` doesn't apply here (and should be left alone).
+
+- **MD's work, including Claude Code sessions working with MD:** commit normally. The
+  author is `mdschultz01 <mdschultz01@gmail.com>`.
+- **Automated / agent work** (the ops tooling that helps run the business): commit through
+  the repo alias, e.g. `git ops commit -m "..."`. The author is
+  `R&S Auto Rentals Ops <ops@rs-auto-rentals.invalid>`. The email is a placeholder; swap it
+  for a real address (or a GitHub noreply address of a bot account) once one exists, with
+  `git config alias.ops '!git -c "user.name=R&S Auto Rentals Ops" -c "user.email=NEW"'`.
+
+Both settings live in `.git/config`, which isn't committed, so a fresh clone needs them set
+again.
