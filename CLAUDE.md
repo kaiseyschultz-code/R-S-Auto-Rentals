@@ -9,7 +9,8 @@ renters. This repo has:
    - the **staff CRM** at `/admin` (§2): **built and tested against local Supabase**;
    - the renter **vehicle inspection** flow at `/inspect/[token]` (§4): **built and tested locally**.
 2. **`supabase/`**: the CRM database (migrations, seed, Supabase CLI config).
-   **Runs locally in Docker; not yet applied to a live Supabase project.**
+   **Live** on Supabase project `RS_Auto-Rentals` (ref `iufxoibejaoxbuzjsjqz`, org
+   RS_Autosales, us-east-2) since 2026-11-14, and runs locally in Docker for development.
 
 **The live site, www.rsautorentals.com, is NOT built from this repo.** It's a separate
 site whose "Book now" is an inquiry form (`/book-car`). **Decided 2026-11-13: the live site
@@ -141,7 +142,8 @@ middleware) refreshes the session and sends signed-out visitors on `/admin/*` to
   bookings show a plain message); Vehicles; Customers (the full ID number is never sent to
   the browser, only its last 4); Leads (pipeline board; "Convert to customer" opens a new
   rental, and saving it marks the lead won); Invoices and Expenses (owner/manager only);
-  Team (owner adds logins, changes roles, switches access off).
+  Team (owner adds logins, changes roles, switches access off); Account (click your name
+  in the sidebar: change your own password, e.g. replacing a temporary one).
 - **Nothing is deleted** in the UI: retire a vehicle with status Inactive, a person by
   unticking "Has access", an invoice with status Cancelled.
 - **Patterns**: each section has `page.tsx` (list), `new/`, `[id]/`, a `*Fields.tsx` form
@@ -169,14 +171,27 @@ Local test logins (owner + staff) are in `web/.env.local` (`TEST_*`, gitignored)
 
 ## 3. The CRM database (`supabase/`)
 
-**Not yet applied to a live Supabase project.** A
-multi-tenant Supabase/Postgres schema for the business's internal operations (rentals,
+**Live project**: `iufxoibejaoxbuzjsjqz` (the repo is linked: `npx supabase link`). All
+migrations are applied there; the seed is NOT (production has no sample data). The first
+owner login exists. Apply new migrations with
+`npx supabase db push --remote --dry-run`, then without `--dry-run` (add `--yes` to skip the
+prompt). The live keys are in `web/.env.production.local` (gitignored; the secret key
+bypasses RLS). Fetch them with `npx supabase projects api-keys --project-ref
+iufxoibejaoxbuzjsjqz --reveal`; without `--reveal` the secret comes back masked. Public
+sign-ups are disabled in the dashboard (Authentication → Sign In / Providers), not just in
+`config.toml`, which only affects local dev.
+
+A multi-tenant Supabase/Postgres schema for the business's internal operations (rentals,
 customers, invoices, expenses, leads, rental agreements, follow-up sequences), separate
 from the public website above. R&S is the only tenant; `tenant_id` stays on every table
 so the CRM could be offered to other rental companies later.
 
 ### Files (Supabase CLI layout; run in this order)
 
+0. `supabase/migrations/20261113000000_archive_2025_drafts.sql`: the live project had the
+   old drafts pasted in by hand (empty tables). If that old schema is detected
+   (`tenants.stripe_customer_id`), it moves its tables, views and functions into schema
+   `archive_2025_drafts` (not exposed by the API; nothing dropped). A no-op elsewhere.
 1. `supabase/migrations/20261113000001_schema.sql`: core tables, plus Square ID columns
    (`vehicles.square_item_id` / `square_daily_variation_id` / `square_weekly_variation_id`,
    `customers.square_customer_id`, `rentals.square_order_id`, `invoices.square_*`) and a
@@ -197,9 +212,10 @@ so the CRM could be offered to other rental companies later.
 6. `..._staff_profile_on_metadata.sql`: fixes migration 2's trigger. Supabase Auth's
    `admin.createUser` writes app_metadata in a follow-up UPDATE, so the trigger now runs on
    INSERT or UPDATE of `raw_app_meta_data`, and never overwrites an existing profile.
-7. `supabase/seed.sql`: sample data for R&S (dates relative to today). The owner-user
-   insert is commented out: create your login in Supabase Auth first, then run it with
-   your UUID.
+7. `..._rs_tenant.sql`: the one real R&S tenant row (id `a1b2c3d4-…-000000000001`), so
+   production has it; staff logins attach to it.
+8. `supabase/seed.sql`: LOCAL sample data only (dates relative to today). Create logins with
+   `scripts/create-staff-user.mjs`, not the commented-out SQL.
 
 Without the Supabase CLI, paste each file into the Supabase SQL Editor in that order.
 The original drafts are in `archive/sql-drafts/` for reference only; don't run them.
@@ -266,14 +282,15 @@ referenced in copy/schema:
 | ID verification (iDenfy) | Not started — mentioned in booking copy only | `web/src/components/booking/BookingWizard.tsx` |
 | BTA appointment booking | Not started | — |
 | Rental agreement e-signature | Placeholder typed-signature UI only | `BookingWizard.tsx` step 3; real backend is `rental_agreements` table (Dropbox Sign fields already in schema) |
-| CRM database | Runs on local Supabase; not applied to a live project | `supabase/` |
+| CRM database | Live on Supabase (`iufxoibejaoxbuzjsjqz`); first owner login created | `supabase/` |
 | Staff CRM UI | Built and tested locally; not deployed | `web/src/app/admin` |
 | Vehicle inspections | Stage 1 built and tested locally; links shared by copy/paste (no SMS/email); no PDF; Stage 2 AI review not started | §4 |
 | Live-site booking inquiries → CRM leads | Not started (the live site is a separate build) | — |
 
 ## 6. Suggested next steps, roughly in order
 
-1. Stand up a live Supabase project, run the migrations (§3), and create the owner login.
+1. ~~Stand up a live Supabase project, run the migrations, create the owner login~~ (done
+   2026-11-14). Still to do: invite Kaisey to the Supabase org and add her as a CRM owner.
 2. Deploy `web/` ops-only (Vercel, `OPS_ONLY=true`, env vars from `web/.env.example`) at
    a subdomain such as ops.rsautorentals.com; set `NEXT_PUBLIC_SITE_URL` to it so
    inspection links point there, and add it to Supabase Auth's site/redirect URLs.

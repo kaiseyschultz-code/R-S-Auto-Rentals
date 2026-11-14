@@ -62,8 +62,10 @@ export default function Sidebar({
           ))}
         </nav>
         <div className="border-t border-black/5 px-5 py-4">
-          <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
-          <p className="text-xs capitalize text-ink/50">{user.role}</p>
+          <Link href="/admin/account" onClick={() => setOpen(false)} className="group block" title="Your account">
+            <p className="truncate text-sm font-semibold text-ink group-hover:text-brand-dark">{user.name}</p>
+            <p className="text-xs capitalize text-ink/50">{user.role} · Account</p>
+          </Link>
           <div className="mt-3 flex gap-3 text-xs font-semibold">
             <a href={websiteUrl} className="text-ink/50 hover:text-ink">
               View website
