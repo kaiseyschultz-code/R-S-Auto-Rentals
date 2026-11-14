@@ -32,6 +32,9 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
         items={items}
         user={{ name: staff.full_name ?? staff.email, role: staff.role }}
         signOut={signOut}
+        websiteUrl={
+          process.env.OPS_ONLY === "true" ? process.env.MAIN_SITE_URL || "https://www.rsautorentals.com" : "/"
+        }
       />
       <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 lg:py-8">
         <div className="mx-auto max-w-6xl">{children}</div>

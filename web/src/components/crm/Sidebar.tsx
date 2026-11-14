@@ -10,10 +10,13 @@ export default function Sidebar({
   items,
   user,
   signOut,
+  websiteUrl = "/",
 }: {
   items: NavItem[];
   user: { name: string; role: string };
   signOut: () => Promise<void>;
+  /** Public website link: "/" normally, the live site when deployed ops-only. */
+  websiteUrl?: string;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -59,12 +62,14 @@ export default function Sidebar({
           ))}
         </nav>
         <div className="border-t border-black/5 px-5 py-4">
-          <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
-          <p className="text-xs capitalize text-ink/50">{user.role}</p>
+          <Link href="/admin/account" onClick={() => setOpen(false)} className="group block" title="Your account">
+            <p className="truncate text-sm font-semibold text-ink group-hover:text-brand-dark">{user.name}</p>
+            <p className="text-xs capitalize text-ink/50">{user.role} · Account</p>
+          </Link>
           <div className="mt-3 flex gap-3 text-xs font-semibold">
-            <Link href="/" className="text-ink/50 hover:text-ink">
+            <a href={websiteUrl} className="text-ink/50 hover:text-ink">
               View website
-            </Link>
+            </a>
             <form action={signOut}>
               <button type="submit" className="text-ink/50 hover:text-ink">
                 Sign out

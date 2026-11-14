@@ -1,10 +1,42 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-// Keeps the staff session fresh and sends signed-out visitors on /admin to
-// the login page. Pages still check permissions themselves (see
-// lib/crm/session.ts); this is the first gate, not the only one.
+/**
+ * Runs before every page request.
+ *
+ * 1. OPS-ONLY MODE (OPS_ONLY=true): this app is deployed beside the live
+ *    public site (e.g. at ops.rsautorentals.com), so only the staff CRM and
+ *    renter inspection links are served here. "/" goes to the CRM; any other
+ *    public page redirects to MAIN_SITE_URL.
+ * 2. /admin: keeps the staff session fresh and sends signed-out visitors to
+ *    the login page. Pages still check permissions themselves (see
+ *    lib/crm/session.ts); this is the first gate, not the only one.
+ */
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
+
+  if (process.env.OPS_ONLY === "true" && !isOpsPath(pathname)) {
+    if (pathname === "/") return NextResponse.redirect(new URL("/admin", request.url));
+    const main = process.env.MAIN_SITE_URL || "https://www.rsautorentals.com";
+    return NextResponse.redirect(new URL(pathname + request.nextUrl.search, main), 308);
+  }
+
+  if (!isAdmin) return NextResponse.next();
+  return adminSession(request);
+}
+
+/** Paths an ops-only deployment serves. */
+function isOpsPath(pathname: string): boolean {
+  return (
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/") ||
+    pathname.startsWith("/inspect/") ||
+    pathname.startsWith("/api/inspect/")
+  );
+}
+
+async function adminSession(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) return NextResponse.next();
@@ -42,5 +74,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  // Everything except build assets and files with an extension (images, icons, robots.txt…).
+  matcher: ["/((?!_next/static|_next/image|.*\\.[a-zA-Z0-9]+$).*)"],
 };
